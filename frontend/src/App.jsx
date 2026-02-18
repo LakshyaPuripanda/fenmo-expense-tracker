@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 
-const API = "http://localhost:4000";
+const API = "https://fenmo-expense-tracker-1hho.onrender.com/api";
 
 export default function App() {
   const [expenses, setExpenses] = useState([]);
@@ -13,11 +13,21 @@ export default function App() {
   const [error, setError] = useState("");
 
   const fetchExpenses = async () => {
-    const res = await fetch(
-      `${API}/expenses?category=${filter}&sort=date_desc`
-    );
-    const data = await res.json();
-    setExpenses(data);
+    try {
+      const res = await fetch(
+        `${API}/expenses?category=${filter}&sort=date_desc`
+      );
+
+      if (!res.ok) {
+        throw new Error("Failed to fetch expenses");
+      }
+
+      const data = await res.json();
+      setExpenses(data);
+    } catch (err) {
+      console.error(err);
+      setError("Failed to load expenses");
+    }
   };
 
   useEffect(() => {
@@ -34,7 +44,7 @@ export default function App() {
     setError("");
 
     try {
-      await fetch(`${API}/expenses`, {
+      const res = await fetch(`${API}/expenses`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -42,33 +52,56 @@ export default function App() {
           category,
           description,
           date,
-          idempotencyKey: crypto.randomUUID(),
         }),
       });
+
+      if (!res.ok) {
+        throw new Error("Failed to save expense");
+      }
 
       setAmount("");
       setCategory("");
       setDescription("");
       setDate("");
-      fetchExpenses();
+      await fetchExpenses();
     } catch (e) {
+      console.error(e);
       setError("Failed to save expense");
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
-  const total = expenses.reduce((sum, e) => sum + e.amount, 0) / 100;
+  const total = expenses.reduce((sum, e) => sum + Number(e.amount || 0), 0);
 
   return (
     <div style={{ padding: 20, maxWidth: 600, margin: "auto" }}>
       <h1>Expense Tracker</h1>
 
       <div style={{ display: "flex", gap: 8, flexDirection: "column" }}>
-        <input placeholder="Amount" value={amount} onChange={(e) => setAmount(e.target.value)} />
-        <input placeholder="Category" value={category} onChange={(e) => setCategory(e.target.value)} />
-        <input placeholder="Description" value={description} onChange={(e) => setDescription(e.target.value)} />
-        <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+        <input
+          placeholder="Amount"
+          value={amount}
+          onChange={(e) => setAmount(e.target.value)}
+        />
+
+        <input
+          placeholder="Category"
+          value={category}
+          onChange={(e) => setCategory(e.target.value)}
+        />
+
+        <input
+          placeholder="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+        />
+
+        <input
+          type="date"
+          value={date}
+          onChange={(e) => setDate(e.target.value)}
+        />
 
         <button onClick={addExpense} disabled={loading}>
           {loading ? "Saving..." : "Add Expense"}
@@ -89,8 +122,8 @@ export default function App() {
 
       <ul>
         {expenses.map((e) => (
-          <li key={e.id}>
-            ₹{e.amount / 100} – {e.category} – {e.description || "—"} – {e.date}
+          <li key={e._id || e.id}>
+            ₹{e.amount} – {e.category} – {e.description || "—"} – {e.date}
           </li>
         ))}
       </ul>
