@@ -9,10 +9,10 @@ app.use(express.json());
 
 // Root route for Render health check
 app.get("/", (req, res) => {
-  res.send("Fenmo Expense Tracker Backend is running ");
+  res.send("Fenmo Expense Tracker Backend is running 🚀");
 });
 
-// Use absolute DB path so Render disk works properly
+// Use absolute DB path for Render disk
 const db = new sqlite3.Database("/opt/render/project/src/backend/data.db");
 
 // Create table if not exists
@@ -20,11 +20,11 @@ db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS expenses (
       id TEXT PRIMARY KEY,
-      amount INTEGER,
-      category TEXT,
+      amount INTEGER NOT NULL,
+      category TEXT NOT NULL,
       description TEXT,
-      date TEXT,
-      created_at TEXT
+      date TEXT NOT NULL,
+      created_at TEXT NOT NULL
     )
   `);
 });
@@ -39,45 +39,45 @@ app.post("/expenses", (req, res) => {
 
   const expenseId = idempotencyKey || uuidv4();
 
-  db.get(
-    "SELECT * FROM expenses WHERE id = ?",
-    [expenseId],
-    (err, row) => {
-      if (row) {
-        return res.json(row); // retry-safe
-      }
-
-      const expense = {
-        id: expenseId,
-        amount: Math.round(amount * 100), // store in paise
-        category,
-        description: description || "",
-        date,
-        created_at: new Date().toISOString(),
-      };
-
-      db.run(
-        "INSERT INTO expenses VALUES (?, ?, ?, ?, ?, ?)",
-        [
-          expense.id,
-          expense.amount,
-          expense.category,
-          expense.description,
-          expense.date,
-          expense.created_at,
-        ],
-        (err) => {
-          if (err) {
-            return res.status(500).json({ error: "DB insert failed" });
-          }
-          res.json(expense);
-        }
-      );
+  db.get("SELECT * FROM expenses WHERE id = ?", [expenseId], (err, row) => {
+    if (err) {
+      return res.status(500).json({ error: "DB lookup failed" });
     }
-  );
+
+    if (row) {
+      return res.json(row); // retry-safe
+    }
+
+    const expense = {
+      id: expenseId,
+      amount: Math.round(Number(amount) * 100), // store in paise
+      category,
+      description: description || "",
+      date,
+      created_at: new Date().toISOString(),
+    };
+
+    db.run(
+      "INSERT INTO expenses VALUES (?, ?, ?, ?, ?, ?)",
+      [
+        expense.id,
+        expense.amount,
+        expense.category,
+        expense.description,
+        expense.date,
+        expense.created_at,
+      ],
+      (err) => {
+        if (err) {
+          return res.status(500).json({ error: "DB insert failed" });
+        }
+        res.json(expense);
+      }
+    );
+  });
 });
 
-// Get Expenses with filter & sort
+// Get Expenses (with filter + sort)
 app.get("/expenses", (req, res) => {
   const { category, sort } = req.query;
 
@@ -98,6 +98,35 @@ app.get("/expenses", (req, res) => {
       return res.status(500).json({ error: "DB fetch failed" });
     }
     res.json(rows);
+  });
+});
+
+// Update Expense
+app.put("/expenses/:id", (req, res) => {
+  const { id } = req.params;
+  const { amount, category, description, date } = req.body;
+
+  if (!amount || !category || !date) {
+    return res.status(400).json({ error: "Missing required fields" });
+  }
+
+  db.run(
+    "UPDATE expenses SET amount = ?, category = ?, description = ?, date = ? WHERE id = ?",
+    [Math.round(Number(amount) * 100), category, description || "", date, id],
+    function (err) {
+      if (err) return res.status(500).json({ error: "DB update failed" });
+      res.json({ updated: this.changes });
+    }
+  );
+});
+
+// Delete Expense
+app.delete("/expenses/:id", (req, res) => {
+  const { id } = req.params;
+
+  db.run("DELETE FROM expenses WHERE id = ?", [id], function (err) {
+    if (err) return res.status(500).json({ error: "DB delete failed" });
+    res.json({ deleted: this.changes });
   });
 });
 
