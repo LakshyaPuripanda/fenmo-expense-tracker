@@ -7,8 +7,15 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-const db = new sqlite3.Database("./data.db");
+// Root route for Render health check
+app.get("/", (req, res) => {
+  res.send("Fenmo Expense Tracker Backend is running ");
+});
 
+// Use absolute DB path so Render disk works properly
+const db = new sqlite3.Database("/opt/render/project/src/backend/data.db");
+
+// Create table if not exists
 db.serialize(() => {
   db.run(`
     CREATE TABLE IF NOT EXISTS expenses (
@@ -22,6 +29,7 @@ db.serialize(() => {
   `);
 });
 
+// Add Expense (Idempotent)
 app.post("/expenses", (req, res) => {
   const { amount, category, description, date, idempotencyKey } = req.body;
 
@@ -29,19 +37,21 @@ app.post("/expenses", (req, res) => {
     return res.status(400).json({ error: "Missing required fields" });
   }
 
+  const expenseId = idempotencyKey || uuidv4();
+
   db.get(
     "SELECT * FROM expenses WHERE id = ?",
-    [idempotencyKey],
+    [expenseId],
     (err, row) => {
       if (row) {
         return res.json(row); // retry-safe
       }
 
       const expense = {
-        id: idempotencyKey || uuidv4(),
-        amount: Math.round(amount * 100),
+        id: expenseId,
+        amount: Math.round(amount * 100), // store in paise
         category,
-        description,
+        description: description || "",
         date,
         created_at: new Date().toISOString(),
       };
@@ -56,7 +66,10 @@ app.post("/expenses", (req, res) => {
           expense.date,
           expense.created_at,
         ],
-        () => {
+        (err) => {
+          if (err) {
+            return res.status(500).json({ error: "DB insert failed" });
+          }
           res.json(expense);
         }
       );
@@ -64,6 +77,7 @@ app.post("/expenses", (req, res) => {
   );
 });
 
+// Get Expenses with filter & sort
 app.get("/expenses", (req, res) => {
   const { category, sort } = req.query;
 
@@ -80,10 +94,16 @@ app.get("/expenses", (req, res) => {
   }
 
   db.all(query, params, (err, rows) => {
+    if (err) {
+      return res.status(500).json({ error: "DB fetch failed" });
+    }
     res.json(rows);
   });
 });
 
-app.listen(4000, () => {
-  console.log("Backend running on http://localhost:4000");
+// Dynamic port for Render
+const PORT = process.env.PORT || 4000;
+
+app.listen(PORT, () => {
+  console.log(`Backend running on port ${PORT}`);
 });
