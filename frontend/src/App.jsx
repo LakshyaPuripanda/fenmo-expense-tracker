@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import "./App.css";
 
-const API = "https://fenmo-expense-tracker-1hho.onrender.com";
+// Use environment variable for backend URL
+const API = import.meta.env.VITE_API_URL;
 
 export default function App() {
   const [expenses, setExpenses] = useState([]);
@@ -86,7 +87,7 @@ export default function App() {
 
   return (
     <div className="container">
-      <h1> Fenmo Expense Tracker</h1>
+      <h1>Fenmo Expense Tracker</h1>
 
       <div className="card">
         <h3>{editingId ? "Edit Expense" : "Add Expense"}</h3>
